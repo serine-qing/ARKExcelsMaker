@@ -486,17 +486,35 @@ onMounted(async () => {
       PIONEER: '先锋',
     }
 
+    // 统计每个名字出现的职业，用于判断是否有多种形态
+    const nameProfessions = new Map<string, Set<string>>()
     rawData.forEach((item) => {
-      // 过滤掉"预备干员"
-      if (item.name.includes('预备干员')) return
+      if (item.isNotObtainable) return
+      if (!nameProfessions.has(item.name)) {
+        nameProfessions.set(item.name, new Set())
+      }
+      nameProfessions.get(item.name)!.add(item.profession)
+    })
+
+    rawData.forEach((item) => {
+      // 过滤掉不可获取的干员
+      if (item.isNotObtainable) return
 
       // rarity 是 0-5，实际星级是 rarity + 1
       const rarityNum = (item.rarity ?? 0) + 1
       const rarityKey = `${rarityNum}星`
       if (!RARITIES.includes(rarityKey as any)) return
 
+      // 对于有多种形态的干员，给非默认形态加上职业标识
+      const professions = nameProfessions.get(item.name)
+      let displayName = item.name
+      if (professions && professions.size > 1 && item.profession !== 'CASTER') {
+        const professionName = PROFESSION_MAP[item.profession] || item.profession
+        displayName = `${item.name}(${professionName})`
+      }
+
       const normalized: Operator = {
-        name: item.name,
+        name: displayName,
         profession: PROFESSION_MAP[item.profession] || item.profession,
         rarity: rarityNum,
         // 头像路径：wiki_upload/images/{星级}/{干员名}.png
