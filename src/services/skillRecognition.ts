@@ -24,6 +24,7 @@ export const DEFAULT_SKILL_CROP_CONFIG: SkillCropConfig = {
 
 const MIN_SKILL_SCORE = 0.68;
 const MIN_CANDIDATE_GAP = 0.04;
+const LOW_GAP_THRESHOLD = 0.01;
 const MIN_NAME_SCORE = 0.64;
 
 export async function recognizeOperatorSkills(
@@ -147,6 +148,9 @@ export async function recognizeOperatorSkills(
 
       if (nameMatch.confidence < 0.75) {
         status = "name-uncertain";
+      } else if (second && best && best.score - second.score < LOW_GAP_THRESHOLD) {
+        // 分差过小，可信度较低（优先于 low-confidence 判断）
+        status = "low-gap";
       } else if (!best || best.score < MIN_SKILL_SCORE) {
         status = "low-confidence";
       } else if (second && best.score - second.score < MIN_CANDIDATE_GAP) {

@@ -55,6 +55,7 @@ const selectedOperators = reactive(new Set<string>())
 const selectedSkills = reactive(new Set<string>())
 const ocrPriority = ref<string[]>([])
 const e1Mode = ref(localStorage.getItem('operatorFilter_e1Mode') === 'true')
+const lowGapOperators = reactive(new Set<string>())
 
 watch(e1Mode, (val) => {
   localStorage.setItem('operatorFilter_e1Mode', String(val))
@@ -195,6 +196,9 @@ function toggleOperator(op: Operator) {
 }
 
 function toggleSkill(opName: string, skillKey: string) {
+  // 手动点击技能后，移除低可信度标记
+  lowGapOperators.delete(opName)
+
   if (selectedSkills.has(skillKey)) {
     selectedOperators.delete(opName)
     const op = findOperatorByName(opName)
@@ -256,6 +260,71 @@ function notify(message: string, type: 'success' | 'warning' | 'error' | 'info' 
   }, 2200)
 }
 
+function notifyNotification(message: string, title: string, type: 'success' | 'warning' | 'error' | 'info' = 'info', autoClose = true) {
+  const container = document.createElement('div')
+  container.style.cssText = `
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    z-index: 9999;
+    min-width: 320px;
+    max-width: 420px;
+    padding: 16px;
+    border-radius: 8px;
+    background: #1e2a45;
+    border: 1px solid #334466;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    animation: slideIn 0.3s ease-out;
+    font-family: inherit;
+  `
+
+  const colors = {
+    error: { border: '#d9534f', icon: '✕', iconColor: '#d9534f', messageColor: '#f5b7b1' },
+    warning: { border: '#e6a23c', icon: '⚠', iconColor: '#e6a23c', messageColor: '#f5d79e' },
+    success: { border: '#67c23a', icon: '✓', iconColor: '#67c23a', messageColor: '#a0a0a0' },
+    info: { border: '#409eff', icon: 'ℹ', iconColor: '#409eff', messageColor: '#a0a0a0' }
+  }
+
+  const color = colors[type]
+  container.style.borderLeft = `4px solid ${color.border}`
+
+  container.innerHTML = `
+    <div style="display: flex; align-items: flex-start; gap: 12px;">
+      <span style="font-size: 18px; color: ${color.iconColor}; flex-shrink: 0;">${color.icon}</span>
+      <div style="flex: 1; min-width: 0;">
+        <div style="font-size: 14px; font-weight: 600; color: #e0e0e0; margin-bottom: 4px;">${title}</div>
+        <div style="font-size: 13px; color: ${color.messageColor}; line-height: 1.5; word-break: break-word;">${message}</div>
+      </div>
+      <button onclick="this.parentElement.parentElement.remove()" style="background: none; border: none; color: #666; cursor: pointer; font-size: 16px; padding: 0; line-height: 1;">✕</button>
+    </div>
+  `
+
+  document.body.appendChild(container)
+
+  if (!document.getElementById('notification-styles')) {
+    const style = document.createElement('style')
+    style.id = 'notification-styles'
+    style.textContent = `
+      @keyframes slideIn {
+        from { transform: translateX(100%); opacity: 0; }
+        to { transform: translateX(0); opacity: 1; }
+      }
+      @keyframes slideOut {
+        from { transform: translateX(0); opacity: 1; }
+        to { transform: translateX(100%); opacity: 0; }
+      }
+    `
+    document.head.appendChild(style)
+  }
+
+  if (autoClose) {
+    window.setTimeout(() => {
+      container.style.animation = 'slideOut 0.3s ease-in forwards'
+      window.setTimeout(() => container.remove(), 300)
+    }, 4000)
+  }
+}
+
 function isStarActive(r: string) {
   return selectedStars.has(r)
 }
@@ -292,6 +361,7 @@ function resolveOperatorsFromOcrLines(lines: Array<{ text: string; score?: numbe
 function applySkillRecognitionSelections(ocrSelections: Array<{ matchedName: string }>) {
   selectedOperators.clear()
   selectedSkills.clear()
+  lowGapOperators.clear()
 
   const skillItems = skillResult.value?.items ?? []
   const selectedSkillByOperator = new Map<string, string>()
@@ -305,23 +375,31 @@ function applySkillRecognitionSelections(ocrSelections: Array<{ matchedName: str
     if (!chosenCandidate?.skill.name) return
 
     selectedSkillByOperator.set(item.matchedName, chosenCandidate.skill.name)
+
+    // 检测 low-gap 状态，使用 op.name（可能带有职业标识）
+    if (item.status === 'low-gap') {
+      const op = findOperatorByName(item.matchedName)
+      if (op) {
+        lowGapOperators.add(op.name)
+      }
+    }
   })
 
   ocrSelections.forEach((selection) => {
     const op = findOperatorByName(selection.matchedName)
     if (!op) return
 
-    selectedOperators.add(selection.matchedName)
+    selectedOperators.add(op.name)
     const visibleSkills = getVisibleSkills(op)
     visibleSkills.forEach((skill) => {
-      selectedSkills.delete(selection.matchedName + '::' + skill.name)
+      selectedSkills.delete(op.name + '::' + skill.name)
     })
 
     const resolvedSkillName = selectedSkillByOperator.get(selection.matchedName)
     if (resolvedSkillName) {
-      selectedSkills.add(selection.matchedName + '::' + resolvedSkillName)
+      selectedSkills.add(op.name + '::' + resolvedSkillName)
     } else if (visibleSkills.length > 0) {
-      selectedSkills.add(selection.matchedName + '::' + visibleSkills[visibleSkills.length - 1].name)
+      selectedSkills.add(op.name + '::' + visibleSkills[visibleSkills.length - 1].name)
     }
   })
 }
@@ -429,6 +507,12 @@ async function processImage(file: File) {
     console.log('技能选择结果:', Array.from(selectedSkills))
 
     notify('已识别 ' + ocrSelections.length + ' 个干员：' + ocrSelections.map((selection) => selection.matchedName).join('、'), 'success')
+
+    // 显示 low-gap 警告提示
+    if (lowGapOperators.size > 0) {
+      const operatorNames = Array.from(lowGapOperators).join('、')
+      notifyNotification(`${operatorNames}技能识别可信度较低，请注意查验`, '低可信度警告', 'warning', false)
+    }
   } catch (err: any) {
     notify('识别失败：' + (err.message || '未知错误'), 'error')
   } finally {
@@ -454,6 +538,7 @@ async function handlePaste(e: ClipboardEvent) {
 function resetSelection() {
   selectedOperators.clear()
   selectedSkills.clear()
+  lowGapOperators.clear()
 }
 
 function handleImgError(e: Event) {
@@ -593,7 +678,7 @@ onMounted(async () => {
 
     <div v-else class="operators-grid" :class="{ 'e1-mode': e1Mode }">
       <template v-for="{ rarity, op } in filteredOperators" :key="op.name">
-        <div class="operator-card" :class="{ selected: isSelected(op.name) }" :data-rarity="getRarityNum(rarity)" @click="toggleOperator(op)">
+        <div class="operator-card" :class="{ selected: isSelected(op.name), 'low-gap': lowGapOperators.has(op.name) }" :data-rarity="getRarityNum(rarity)" @click="toggleOperator(op)">
           <div class="avatar-wrapper">
             <div class="rarity-badge">★{{ getRarityNum(rarity) }}</div>
             <img v-if="getAvatarUrl(op.avatar_url)" :src="getAvatarUrl(op.avatar_url)" :alt="op.name" loading="lazy" @error="handleImgError" />
@@ -666,6 +751,14 @@ onMounted(async () => {
 .operator-card { background: #1e2a40; border: 2px solid #2a3a55; border-radius: 8px; overflow: hidden; cursor: pointer; transition: all 0.2s; position: relative; }
 .operator-card.selected { border-color: #ff6600; box-shadow: 0 0 12px rgba(255, 102, 0, 0.3); }
 .operator-card.selected::after { content: '✓'; position: absolute; top: 6px; right: 8px; font-size: 16px; color: #ff6600; font-weight: bold; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); z-index: 2; }
+.operator-card.low-gap { animation: lowGapPulse 2s ease-in-out infinite; border-color: #ff4444 !important; }
+.operator-card.low-gap::after { content: '⚠'; position: absolute; top: 6px; right: 8px; font-size: 16px; color: #ff4444; font-weight: bold; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); z-index: 2; }
+@keyframes lowGapPulse {
+  0%, 100% { box-shadow: 0 0 3px rgba(255, 0, 0, 0.3), 0 0 6px rgba(255, 0, 0, 0.15); }
+  25% { box-shadow: 0 0 6px rgba(255, 0, 0, 0.5), 0 0 12px rgba(255, 0, 0, 0.25); }
+  50% { box-shadow: 0 0 10px rgba(255, 0, 0, 0.7), 0 0 20px rgba(255, 0, 0, 0.35); }
+  75% { box-shadow: 0 0 6px rgba(255, 0, 0, 0.5), 0 0 12px rgba(255, 0, 0, 0.25); }
+}
 .operator-card[data-rarity='1'] { border-color: #444; }
 .operator-card[data-rarity='2'] { border-color: #556644; }
 .operator-card[data-rarity='3'] { border-color: #335577; }
