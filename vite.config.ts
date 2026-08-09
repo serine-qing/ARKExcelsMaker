@@ -6,8 +6,11 @@ const isolationHeaders = {
   "Cross-Origin-Embedder-Policy": "require-corp",
 };
 
+const isServerBuild = process.env.SERVER_BUILD === "1";
+
 export default defineConfig({
   base: "/",
+  publicDir: isServerBuild ? false : "public",
   plugins: [vue()],
   server: {
     headers: isolationHeaders,

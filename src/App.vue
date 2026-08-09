@@ -46,6 +46,7 @@ const loadError = ref('')
 const recognizing = ref(false)
 const ocrProgress = reactive<{ stage: string; percent: number }>({ stage: '', percent: 0 })
 const recognizingElapsed = ref(0)
+const ocrUsed = ref(false)
 let recognizeTimer: ReturnType<typeof setInterval> | null = null
 let currentNotification: HTMLElement | null = null
 const pasteTarget = ref<HTMLTextAreaElement>()
@@ -517,6 +518,7 @@ async function processImage(file: File) {
 
     console.log('技能选择结果:', Array.from(selectedSkills))
 
+    ocrUsed.value = true
     notify('已识别 ' + ocrSelections.length + ' 个干员：' + ocrSelections.map((selection) => selection.matchedName).join('、'), 'success')
 
     // 显示 low-gap 警告提示
@@ -680,6 +682,9 @@ onMounted(async () => {
               <div class="download-progress-time" v-if="recognizingElapsed > 0">已用时 {{ recognizingElapsed }}s</div>
             </div>
           </template>
+          <template v-else-if="!ocrUsed">
+            <span class="download-hint">初次使用需要下载识图库，可能需要一定时间</span>
+          </template>
           <button class="mode-toggle-btn" :class="{ active: e1Mode }" @click="e1Mode = !e1Mode">{{ e1Mode ? '精一模式' : '精二模式' }}</button>
           <button class="mode-toggle-btn" :class="{ active: skillDisplayMode === 1 }" @click="skillDisplayMode = skillDisplayMode === 0 ? 1 : 0">{{ skillDisplayMode === 0 ? '☰ 文字' : '▣ 图标' }}</button>
         </div>
@@ -746,6 +751,7 @@ onMounted(async () => {
 .filter-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .filter-right { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .filter-row { display: flex; align-items: center; gap: 10px}
+.download-hint { font-size: 14px; color: #f0ad4e; line-height: 1; }
 .download-progress-wrap { display: flex; flex-direction: column; gap: 3px; width: 232px; margin-right: 8px; }
 .download-progress-text { font-size: 12px; color: #f0ad4e; white-space: nowrap; }
 .download-progress-bar { width: 100%; height: 4px; background: #1e2a45; border-radius: 2px; overflow: hidden; }
