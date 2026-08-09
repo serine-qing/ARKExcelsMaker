@@ -6,6 +6,8 @@ const isolationHeaders = {
   "Cross-Origin-Embedder-Policy": "require-corp",
 };
 
+const isServerBuild = process.env.SERVER_BUILD === "1";
+
 export default defineConfig({
   base: '/operators/',
   plugins: [vue()],
@@ -21,5 +23,4 @@ export default defineConfig({
   build: {
     outDir: 'ARKExcelsMaker'
   }
-
 });
