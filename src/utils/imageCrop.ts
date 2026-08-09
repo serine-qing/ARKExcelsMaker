@@ -43,17 +43,23 @@ export function calculateSkillRect(
     referenceTextHeight * config.verticalGapByTextHeight -
     baseSize -
     padding;
+  const rect = {
+    x: Math.round(x),
+    y: Math.round(y),
+    width: Math.max(1, Math.round(size)),
+    height: Math.max(1, Math.round(size)),
+  };
 
   if (
-    x < 0 ||
-    y < 0 ||
-    x + size > imageWidth ||
-    y + size > imageHeight
+    rect.x < 0 ||
+    rect.y < 0 ||
+    rect.x + rect.width > imageWidth ||
+    rect.y + rect.height > imageHeight
   ) {
     return null;
   }
 
-  return { x, y, width: size, height: size };
+  return rect;
 }
 
 export function cropToCanvas(

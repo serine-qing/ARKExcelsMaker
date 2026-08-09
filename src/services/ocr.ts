@@ -30,9 +30,9 @@ const ASSET_FETCH_TIMEOUT_MS = 5 * 60 * 1000;
 const DET_MODEL = "models/PP-OCRv5_mobile_det_onnx_infer.tar";
 const REC_MODEL = "models/PP-OCRv5_mobile_rec_onnx_infer.tar";
 
-// 编队截图常见约 720p；短边低于此值时先放大，减轻边缘小字名条漏检。
+// 小图仅为 OCR 放大；识别坐标会映射回原图，技能裁剪始终使用原图。
 const OCR_TARGET_MIN_SIDE = 960;
-const OCR_MAX_SCALE = 2.5;
+const OCR_MAX_SCALE = 4;
 
 let instance: OcrInstance | null = null;
 let initialization: Promise<OcrInstance> | null = null;
@@ -212,7 +212,8 @@ async function getOcr(): Promise<OcrInstance> {
 
 interface PreparedOcrInput {
   source: File | HTMLCanvasElement;
-  scale: number;
+  scaleX: number;
+  scaleY: number;
   original: { width: number; height: number };
 }
 
@@ -221,13 +222,21 @@ async function prepareOcrInput(file: File): Promise<PreparedOcrInput> {
   try {
     const { width, height } = bitmap;
     const minSide = Math.min(width, height);
-    const scale =
-      minSide > 0
-        ? Math.min(OCR_MAX_SCALE, Math.max(1, OCR_TARGET_MIN_SIDE / minSide))
-        : 1;
+    if (minSide <= 0) {
+      throw new Error("图片尺寸无效");
+    }
+    const scale = Math.min(
+      OCR_MAX_SCALE,
+      Math.max(1, OCR_TARGET_MIN_SIDE / minSide),
+    );
 
     if (scale <= 1.01) {
-      return { source: file, scale: 1, original: { width, height } };
+      return {
+        source: file,
+        scaleX: 1,
+        scaleY: 1,
+        original: { width, height },
+      };
     }
 
     const canvas = document.createElement("canvas");
@@ -242,9 +251,11 @@ async function prepareOcrInput(file: File): Promise<PreparedOcrInput> {
     context.imageSmoothingQuality = "high";
     context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
 
+    // 统一使用同一 scale 映射回原图，避免 Math.round 导致的 scaleX/scaleY 分裂。
     return {
       source: canvas,
-      scale,
+      scaleX: scale,
+      scaleY: scale,
       original: { width, height },
     };
   } finally {
@@ -254,15 +265,15 @@ async function prepareOcrInput(file: File): Promise<PreparedOcrInput> {
 
 function mapLinesToOriginal(
   lines: OcrResultItem[],
-  scale: number,
+  scaleX: number,
+  scaleY: number,
 ): OcrResultItem[] {
-  if (scale === 1) {
-    return lines;
-  }
-
+  if (scaleX === 1 && scaleY === 1) return lines;
   return lines.map((item) => ({
     ...item,
-    poly: item.poly.map(([x, y]) => [x / scale, y / scale] as [number, number]),
+    poly: item.poly.map(
+      ([x, y]) => [x / scaleX, y / scaleY] as [number, number],
+    ),
   }));
 }
 
@@ -286,7 +297,8 @@ export async function recognizeImage(file: File): Promise<RecognitionResult> {
 
     const lines = mapLinesToOriginal(
       result.items.filter((item) => item.text.trim().length > 0),
-      prepared.scale,
+      prepared.scaleX,
+      prepared.scaleY,
     );
 
     return {
@@ -294,7 +306,6 @@ export async function recognizeImage(file: File): Promise<RecognitionResult> {
       lines,
       elapsedMs: result.metrics.totalMs,
       provider: result.runtime.recProvider,
-      // 技能裁剪基于原图；坐标已映射回原图尺寸。
       image: prepared.original,
     };
   } catch (error) {
