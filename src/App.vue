@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { recognizeImage, subscribeOcrProgress, type OcrProgress } from './services/ocr'
+import { recognizeImage, subscribeOcrProgress } from './services/ocr'
 import { matchOperatorName } from './utils/similarity'
 import { recognizeOperatorSkills } from './services/skillRecognition'
 import type { SkillRecognitionResult } from './types/skill'
@@ -45,6 +45,9 @@ const loading = ref(true)
 const loadError = ref('')
 const recognizing = ref(false)
 const ocrProgress = reactive<{ stage: string; percent: number }>({ stage: '', percent: 0 })
+const recognizingElapsed = ref(0)
+let recognizeTimer: ReturnType<typeof setInterval> | null = null
+let currentNotification: HTMLElement | null = null
 const pasteTarget = ref<HTMLTextAreaElement>()
 const fileInput = ref<HTMLInputElement>()
 const skillDisplayMode = ref<0 | 1>(0)
@@ -301,6 +304,7 @@ function notifyNotification(message: string, title: string, type: 'success' | 'w
   `
 
   document.body.appendChild(container)
+  currentNotification = container
 
   if (!document.getElementById('notification-styles')) {
     const style = document.createElement('style')
@@ -469,7 +473,12 @@ function handleFileUpload(e: Event) {
 
 async function processImage(file: File) {
   recognizing.value = true
+  recognizingElapsed.value = 0
+  recognizeTimer = setInterval(() => recognizingElapsed.value++, 1000)
+  ocrProgress.stage = ''
+  ocrProgress.percent = 0
   lowGapOperators.clear()
+  if (currentNotification) { currentNotification.remove(); currentNotification = null }
   notify('正在识别文字...', 'info')
 
   try {
@@ -518,6 +527,7 @@ async function processImage(file: File) {
   } catch (err: any) {
     notify('识别失败：' + (err.message || '未知错误'), 'error')
   } finally {
+    if (recognizeTimer) { clearInterval(recognizeTimer); recognizeTimer = null }
     recognizing.value = false
   }
 }
@@ -661,6 +671,13 @@ onMounted(async () => {
             <div class="download-progress-wrap">
               <div class="download-progress-text">{{ ocrProgress.stage }}</div>
               <div class="download-progress-bar"><div class="download-progress-fill" :style="{ width: ocrProgress.percent + '%' }"></div></div>
+              <div class="download-progress-time" v-if="recognizingElapsed > 0">已用时 {{ recognizingElapsed }}s</div>
+            </div>
+          </template>
+          <template v-else-if="recognizing">
+            <div class="download-progress-wrap">
+              <div class="download-progress-text">正在识别中...</div>
+              <div class="download-progress-time" v-if="recognizingElapsed > 0">已用时 {{ recognizingElapsed }}s</div>
             </div>
           </template>
           <button class="mode-toggle-btn" :class="{ active: e1Mode }" @click="e1Mode = !e1Mode">{{ e1Mode ? '精一模式' : '精二模式' }}</button>
@@ -729,10 +746,11 @@ onMounted(async () => {
 .filter-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .filter-right { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .filter-row { display: flex; align-items: center; gap: 10px}
-.download-progress-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 232px; }
+.download-progress-wrap { display: flex; flex-direction: column; gap: 3px; width: 232px; margin-right: 8px; }
 .download-progress-text { font-size: 12px; color: #f0ad4e; white-space: nowrap; }
 .download-progress-bar { width: 100%; height: 4px; background: #1e2a45; border-radius: 2px; overflow: hidden; }
 .download-progress-fill { height: 100%; background: #f0ad4e; border-radius: 2px; transition: width 0.3s ease; }
+.download-progress-time { font-size: 12px; color: #8899aa; }
 .mode-toggle-btn { padding: 5px 12px; border: 1px solid #445577; border-radius: 5px; background: #1e2a45; color: #aaccee; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .mode-toggle-btn:hover { background: #2a3a5a; border-color: #6688bb; color: #ffffff; }
 .mode-toggle-btn.active { background: #0f3460; border-color: #2980b9; color: #ffffff; }
