@@ -595,7 +595,7 @@ onMounted(async () => {
       let displayName = item.name
       if (professions && professions.size > 1 && item.profession !== 'CASTER') {
         const professionName = PROFESSION_MAP[item.profession] || item.profession
-        displayName = `${item.name}(${professionName})`
+        displayName = `${item.name}（${professionName}）`
       }
 
       const normalized: Operator = {
