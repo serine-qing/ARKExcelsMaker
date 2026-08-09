@@ -7,7 +7,7 @@ const isolationHeaders = {
 };
 
 export default defineConfig({
-  base: "/",
+  base: '/operators/',
   plugins: [vue()],
   server: {
     headers: isolationHeaders,
@@ -18,4 +18,8 @@ export default defineConfig({
   worker: {
     format: "es",
   },
+  build: {
+    outDir: 'ARKExcelsMaker'
+  }
+
 });
