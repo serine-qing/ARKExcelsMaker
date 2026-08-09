@@ -65,17 +65,8 @@ function canUseWebGpu(): boolean {
 
 function resolveRuntimeAssets() {
   const webgpu = canUseWebGpu();
-  // jsep 体积约 24MB，仅 WebGPU 需要；普通 HTTP/WASM 用约 12MB 版本，降低首次超时概率。
-  const wasmFile = webgpu
-    ? "ort-wasm-simd-threaded.jsep.wasm"
-    : "ort-wasm-simd-threaded.wasm";
-
   return {
     backend: webgpu ? ("auto" as const) : ("wasm" as const),
-    wasmUrl: localAsset(`wasm/1.24.3/${wasmFile}`),
-    wasmPaths: {
-      wasm: localAsset(`wasm/1.24.3/${wasmFile}`),
-    } as unknown as string,
   };
 }
 
@@ -105,15 +96,12 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
   }
 }
 
-async function preloadAssets(wasmUrl: string): Promise<void> {
+async function preloadAssets(): Promise<void> {
   setLoadStage("models");
   await Promise.all([
     fetchWithTimeout(localAsset(DET_MODEL), ASSET_FETCH_TIMEOUT_MS),
     fetchWithTimeout(localAsset(REC_MODEL), ASSET_FETCH_TIMEOUT_MS),
   ]);
-
-  setLoadStage("runtime");
-  await fetchWithTimeout(wasmUrl, ASSET_FETCH_TIMEOUT_MS);
 }
 
 export async function initializeOcr(): Promise<InitializationSummary | null> {
@@ -129,7 +117,7 @@ async function getOcr(): Promise<OcrInstance> {
   if (!initialization) {
     initialization = (async () => {
       const runtime = resolveRuntimeAssets();
-      await preloadAssets(runtime.wasmUrl);
+      await preloadAssets();
 
       setLoadStage("session");
       const ocr = await PaddleOCR.create({
@@ -144,10 +132,6 @@ async function getOcr(): Promise<OcrInstance> {
         },
         ortOptions: {
           backend: runtime.backend,
-          // 仅覆盖 WASM 地址，让 Worker 使用其内置且版本完全匹配的 JS glue。
-          // 这样可避免 Vite 拦截 public 目录中的动态 .mjs 导入。
-          wasmPaths: runtime.wasmPaths,
-          // 单线程可在 iframe、非跨源隔离页面及普通静态托管中稳定运行。
           numThreads: 1,
           simd: true,
         },
