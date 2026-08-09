@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { recognizeImage } from './services/ocr'
+import { recognizeImage, subscribeOcrProgress, type OcrProgress } from './services/ocr'
 import { matchOperatorName } from './utils/similarity'
 import { recognizeOperatorSkills } from './services/skillRecognition'
 import type { SkillRecognitionResult } from './types/skill'
@@ -44,6 +44,7 @@ const allOperators = ref<Record<string, Operator[]>>({})
 const loading = ref(true)
 const loadError = ref('')
 const recognizing = ref(false)
+const ocrProgress = reactive<{ stage: string; percent: number }>({ stage: '', percent: 0 })
 const pasteTarget = ref<HTMLTextAreaElement>()
 const fileInput = ref<HTMLInputElement>()
 const skillDisplayMode = ref<0 | 1>(0)
@@ -468,6 +469,7 @@ function handleFileUpload(e: Event) {
 
 async function processImage(file: File) {
   recognizing.value = true
+  lowGapOperators.clear()
   notify('正在识别文字...', 'info')
 
   try {
@@ -549,6 +551,11 @@ function handleImgError(e: Event) {
 }
 
 onMounted(async () => {
+  const unsubProgress = subscribeOcrProgress((p) => {
+    ocrProgress.stage = p.stage
+    ocrProgress.percent = p.percent
+  })
+
   try {
     const res = await fetch(assetUrl('data/operators.json'))
     if (!res.ok) throw new Error('加载失败: ' + res.status)
@@ -650,6 +657,12 @@ onMounted(async () => {
       </div>
       <div class="filter-right">
         <div class="filter-row">
+          <template v-if="ocrProgress.stage">
+            <div class="download-progress-wrap">
+              <div class="download-progress-text">{{ ocrProgress.stage }}</div>
+              <div class="download-progress-bar"><div class="download-progress-fill" :style="{ width: ocrProgress.percent + '%' }"></div></div>
+            </div>
+          </template>
           <button class="mode-toggle-btn" :class="{ active: e1Mode }" @click="e1Mode = !e1Mode">{{ e1Mode ? '精一模式' : '精二模式' }}</button>
           <button class="mode-toggle-btn" :class="{ active: skillDisplayMode === 1 }" @click="skillDisplayMode = skillDisplayMode === 0 ? 1 : 0">{{ skillDisplayMode === 0 ? '☰ 文字' : '▣ 图标' }}</button>
         </div>
@@ -716,6 +729,10 @@ onMounted(async () => {
 .filter-left { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 10px; }
 .filter-right { flex: 0 0 auto; display: flex; flex-direction: column; gap: 8px; align-items: flex-end; }
 .filter-row { display: flex; align-items: center; gap: 10px}
+.download-progress-wrap { display: flex; flex-direction: column; gap: 3px; min-width: 232px; }
+.download-progress-text { font-size: 12px; color: #f0ad4e; white-space: nowrap; }
+.download-progress-bar { width: 100%; height: 4px; background: #1e2a45; border-radius: 2px; overflow: hidden; }
+.download-progress-fill { height: 100%; background: #f0ad4e; border-radius: 2px; transition: width 0.3s ease; }
 .mode-toggle-btn { padding: 5px 12px; border: 1px solid #445577; border-radius: 5px; background: #1e2a45; color: #aaccee; font-size: 13px; cursor: pointer; transition: all 0.2s; }
 .mode-toggle-btn:hover { background: #2a3a5a; border-color: #6688bb; color: #ffffff; }
 .mode-toggle-btn.active { background: #0f3460; border-color: #2980b9; color: #ffffff; }

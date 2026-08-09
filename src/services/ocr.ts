@@ -19,6 +19,11 @@ export interface RecognitionResult {
 
 export type OcrLoadStage = "models" | "runtime" | "session";
 
+export interface OcrProgress {
+  stage: string;
+  percent: number;
+}
+
 const baseUrl = import.meta.env.BASE_URL;
 const ASSET_FETCH_TIMEOUT_MS = 5 * 60 * 1000;
 
@@ -34,10 +39,21 @@ let initialization: Promise<OcrInstance> | null = null;
 let loadStage: OcrLoadStage = "models";
 const loadStageListeners = new Set<(stage: OcrLoadStage) => void>();
 
+// 进度追踪
+let currentProgress: OcrProgress = { stage: "", percent: 0 };
+const progressListeners = new Set<(progress: OcrProgress) => void>();
+
 function setLoadStage(stage: OcrLoadStage) {
   loadStage = stage;
   for (const listener of loadStageListeners) {
     listener(stage);
+  }
+}
+
+function setProgress(stage: string, percent: number) {
+  currentProgress = { stage, percent };
+  for (const listener of progressListeners) {
+    listener(currentProgress);
   }
 }
 
@@ -48,6 +64,16 @@ export function subscribeOcrLoadStage(
   listener(loadStage);
   return () => {
     loadStageListeners.delete(listener);
+  };
+}
+
+export function subscribeOcrProgress(
+  listener: (progress: OcrProgress) => void,
+): () => void {
+  progressListeners.add(listener);
+  listener(currentProgress);
+  return () => {
+    progressListeners.delete(listener);
   };
 }
 
@@ -96,12 +122,47 @@ async function fetchWithTimeout(url: string, timeoutMs: number): Promise<Respons
   }
 }
 
+async function fetchWithProgress(
+  url: string,
+  label: string,
+  percentBase: number,
+  percentRange: number,
+): Promise<Response> {
+  const response = await fetch(url);
+  if (!response.ok) {
+    throw new Error(`HTTP ${response.status}：${url}`);
+  }
+  const contentLength = Number(response.headers.get("content-length")) || 0;
+  const reader = response.body?.getReader();
+  if (!contentLength || !reader) {
+    // 无法获取大小，直接读完
+    setProgress(label, percentBase + percentRange);
+    const buf = await response.arrayBuffer();
+    return new Response(buf, { headers: response.headers });
+  }
+  let received = 0;
+  const chunks: Uint8Array[] = [];
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    const pct = percentBase + Math.round((received / contentLength) * percentRange);
+    setProgress(label, Math.min(pct, percentBase + percentRange));
+  }
+  const all = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    all.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return new Response(all, { headers: response.headers });
+}
+
 async function preloadAssets(): Promise<void> {
   setLoadStage("models");
-  await Promise.all([
-    fetchWithTimeout(localAsset(DET_MODEL), ASSET_FETCH_TIMEOUT_MS),
-    fetchWithTimeout(localAsset(REC_MODEL), ASSET_FETCH_TIMEOUT_MS),
-  ]);
+  await fetchWithProgress(localAsset(DET_MODEL), "正在下载检测模型...", 0, 40);
+  await fetchWithProgress(localAsset(REC_MODEL), "正在下载识别模型...", 40, 40);
 }
 
 export async function initializeOcr(): Promise<InitializationSummary | null> {
@@ -120,6 +181,7 @@ async function getOcr(): Promise<OcrInstance> {
       await preloadAssets();
 
       setLoadStage("session");
+      setProgress("正在初始化识图引擎...", 80);
       const ocr = await PaddleOCR.create({
         worker: true,
         textDetectionModelName: "PP-OCRv5_mobile_det",
@@ -136,6 +198,7 @@ async function getOcr(): Promise<OcrInstance> {
           simd: true,
         },
       });
+      setProgress("", 100);
       instance = ocr;
       return ocr;
     })().catch((error) => {
