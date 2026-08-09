@@ -692,7 +692,25 @@ onMounted(async () => {
     <div v-if="loading" class="empty-state">加载中...</div>
     <div v-else-if="loadError" class="empty-state">加载 operators.json 失败: {{ loadError }}</div>
 
-    <div v-else class="operators-grid" :class="{ 'e1-mode': e1Mode }">
+    <!-- 技能识别结果展示 -->
+    <div v-if="skillResult && skillResult.items.length > 0" class="skill-crop-section">
+      <div class="skill-crop-grid">
+        <div
+          v-for="(item, index) in skillResult.items"
+          :key="index"
+          class="skill-crop-card"
+          :class="{ 'low-score': item.best && item.best.score < 0.68 }"
+        >
+          <img v-if="item.cropDataUrl" :src="item.cropDataUrl" class="skill-crop-image" :alt="item.matchedName || ''" />
+          <div class="skill-crop-name">{{ item.matchedName }}</div>
+          <div v-if="item.best" class="skill-crop-score" :class="{ 'low': item.best.score < 0.68 }">
+            {{ (item.best.score * 100).toFixed(0) }}%
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="operators-grid" :class="{ 'e1-mode': e1Mode }">
       <template v-for="{ rarity, op } in filteredOperators" :key="op.name">
         <div class="operator-card" :class="{ selected: isSelected(op.name), 'low-gap': lowGapOperators.has(op.name) }" :data-rarity="getRarityNum(rarity)" @click="toggleOperator(op)">
           <div class="avatar-wrapper">
@@ -812,11 +830,58 @@ onMounted(async () => {
 .no-skills { font-size: 11px; color: #556; font-style: italic; }
 .empty-state { text-align: center; padding: 60px 20px; color: #556677; font-size: 16px; grid-column: 1 / -1; }
 .bottom-spacer { height: 40px; grid-column: 1 / -1; }
+
+/* 技能识别结果展示区域 */
+.skill-crop-section {
+  margin: 0 20px;
+  padding: 8px;
+  background: #16213e;
+  border: 1px solid #2a3a55;
+  border-radius: 6px;
+}
+.skill-crop-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.skill-crop-card {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: #1a2a3e;
+  border: 1px solid #2a4060;
+  border-radius: 4px;
+  font-size: 12px;
+}
+.skill-crop-card.low-score {
+  border-color: #dc3545;
+}
+.skill-crop-image {
+  width: 40px;
+  height: 40px;
+  object-fit: contain;
+  image-rendering: pixelated;
+  border-radius: 2px;
+}
+.skill-crop-name {
+  color: #ddeeff;
+  font-weight: 500;
+}
+.skill-crop-score {
+  color: #28a745;
+  font-weight: 600;
+}
+.skill-crop-score.low {
+  color: #dc3545;
+}
+
 @media (max-width: 600px) {
   .operators-grid { grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 8px; padding: 10px; }
   .filter-bar { padding: 10px 12px; }
   .filter-btn { padding: 4px 10px; font-size: 12px; }
   .operator-name { font-size: 12px; }
   .skill-tag { font-size: 10px; padding: 1px 6px; }
+  .skill-crop-section { margin: 8px 12px; }
 }
 </style>

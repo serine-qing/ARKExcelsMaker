@@ -15,10 +15,9 @@ import { compareSkillImage } from "../utils/imageComparison";
 import { matchOperatorName } from "../utils/similarity";
 
 export const DEFAULT_SKILL_CROP_CONFIG: SkillCropConfig = {
-  iconSizeByTextHeight: 1.65,
-  // 缩小框时同步补偿垂直间距，保持裁剪中心高度基本不变。
-  verticalGapByTextHeight: 0,
-  horizontalOffsetByTextHeight: 0.2,
+  iconSizeByTextHeight: 1.30,
+  verticalGapByTextHeight: -0.10,
+  horizontalOffsetByTextHeight: 0.15,
   paddingRatio: 0,
 };
 
@@ -130,6 +129,7 @@ export async function recognizeOperatorSkills(
 
       // 以 128px 无损裁剪保留细节；哈希计算阶段再按算法要求缩放。
       const cropCanvas = cropToCanvas(image, cropRect, 128);
+
       const candidates: SkillCandidate[] = (
         await Promise.all(
           skills.map(async (skill) => {
