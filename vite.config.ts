@@ -9,8 +9,7 @@ const isolationHeaders = {
 const isServerBuild = process.env.SERVER_BUILD === "1";
 
 export default defineConfig({
-  base: "/",
-  publicDir: isServerBuild ? false : "public",
+  base: '/operators/',
   plugins: [vue()],
   server: {
     headers: isolationHeaders,
@@ -21,4 +20,7 @@ export default defineConfig({
   worker: {
     format: "es",
   },
+  build: {
+    outDir: 'ARKExcelsMaker'
+  }
 });
