@@ -487,26 +487,9 @@ async function processImage(file: File) {
     selectedSkills.clear()
 
     const res = await recognizeImage(file)
-    const lines: string[] = []
-    if (res.lines) {
-      res.lines.forEach((item: any) => {
-        lines.push(item.text)
-      })
-    }
-
-    console.log('OCR 识别结果:', {
-      raw: res,
-      text: res.text,
-      lines: res.lines,
-      image: res.image,
-    })
-
     skillResult.value = await recognizeOperatorSkills(file, res.lines)
 
     const ocrSelections = resolveOperatorsFromOcrLines(res.lines)
-
-    console.log('基于 OCR 结果选中的干员:', ocrSelections)
-    console.log('技能识别结果:', skillResult.value)
 
     if (ocrSelections.length === 0) {
       notify('未识别到干员，请确认截图中有干员名字', 'warning')
@@ -515,8 +498,6 @@ async function processImage(file: File) {
 
     ocrPriority.value = ocrSelections.map((selection) => selection.matchedName)
     applySkillRecognitionSelections(ocrSelections)
-
-    console.log('技能选择结果:', Array.from(selectedSkills))
 
     ocrUsed.value = true
     notify('已识别 ' + ocrSelections.length + ' 个干员：' + ocrSelections.map((selection) => selection.matchedName).join('、'), 'success')
