@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, reactive, computed, watch, onMounted } from 'vue'
-import { recognizeImage, subscribeOcrProgress } from './services/ocr'
+import { initializeOcr, recognizeImage, subscribeOcrProgress } from './services/ocr'
 import { matchOperatorName } from './utils/similarity'
 import { recognizeOperatorSkills } from './services/skillRecognition'
 import type { SkillRecognitionResult } from './types/skill'
@@ -553,6 +553,37 @@ function handleImgError(e: Event) {
   if (placeholder) placeholder.style.display = 'flex'
 }
 
+function waitForResourceIdle(idleMs = 1000, timeoutMs = 20000) {
+  return new Promise<void>((resolve) => {
+    let idleTimer = 0
+    const finish = () => {
+      observer.disconnect()
+      window.clearTimeout(idleTimer)
+      window.clearTimeout(maxTimer)
+      resolve()
+    }
+
+    const bump = () => {
+      window.clearTimeout(idleTimer)
+      idleTimer = window.setTimeout(finish, idleMs)
+    }
+
+    const observer = new PerformanceObserver(bump)
+    observer.observe({ type: 'resource', buffered: false })
+
+    const maxTimer = window.setTimeout(finish, timeoutMs)
+    bump()
+  })
+}
+
+function warmupOcrWhenIdle() {
+  void (async () => {
+    await waitForResourceIdle()
+    if (recognizing.value) return
+    await initializeOcr().catch(() => {})
+  })()
+}
+
 onMounted(async () => {
   const unsubProgress = subscribeOcrProgress((p) => {
     ocrProgress.stage = p.stage
@@ -632,6 +663,8 @@ onMounted(async () => {
   } finally {
     loading.value = false
   }
+
+  warmupOcrWhenIdle()
 })
 </script>
 
